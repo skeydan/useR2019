@@ -1,0 +1,231 @@
+---
+# PLEASE SEE THE README for in depth description github.com/brentthorne/posterdown
+#
+#---POSTER SIZE & DEFAULT FONT---#
+poster_height: "46.8in" # height in inches of poster
+poster_width: "33.1in" # width in inches of poster
+font_family: "palatino" # choose from typical latex fonts (example: "palatino")
+font_size: "30pt" #please see github.com/brentthorne/posterdown for compatible options.
+
+#---TITLE BOX OPTIONS---#
+#ESSENTIALS
+title: '\fontfamily{phv}\selectfont tfprobability: R interface to TensorFlow Probability'
+author: "The multiverse team at RStudio, Inc."
+affiliation: ""
+#STYLE & FORMATTING
+titlebox_bgcol: "537c8e"  #Colour of the Title Box background
+titlebox_bordercol: "2ebdbd" #Colour of the title Box border.
+titlebox_shape: "all"
+titlebox_borderwidth: "1cm"
+title_textcol: "ffffff" #colour of title text
+author_textcol: "001419" # Colour of author text
+affiliation_textcol: "FFFFFF" # Colour of affiliation text
+title_textsize: "Huge"         # Poster title fontsize
+author_textsize: "Large"       # Author list font size
+affiliation_textsize: "large"  # Affiliation font size
+#ADDING LOGOS
+logoleft_name: 'tfprobability.png'
+logoleft_width: '3in'
+logoleft_xshift: '100in'
+logoleft_yshift: '0.2in'
+logoright_name: 'tfprobability.png'
+logoright_width: '3in'
+logoright_xshift: '-0.7in'
+logoright_yshift: '0.2in'
+#---POSTER BODY OPTIONS---#
+body_bgcol: "ffffff" #colour of the poster main background
+body_textsize: "normalsize"    # Size of the main poster body text
+body_textcol: "000000" # Colour of main text in the body of poster
+column_numbers: 2 # Number of columns that the poster has
+column_margins: "0.5in" # Margin spacing for columns
+columnline_col: "537c8e" #colour 
+columnline_width: "0.5pt" #width of line between each column
+#SECTION TITLE STYLING
+sectitle_textcol: "ffffff" # Colour of the poster section titles
+sectitle_bgcol: "2ebdbd" # Colour of the section title box
+sectitle_bordercol: "2ebdbd" # Colour of the border around the section title box.
+sectitle_borderwidth: "2mm" # Thicknes of the section title box border
+sectitle_boxshape: "uphill" # Changes the shape of the section title box.
+
+#---BIBLIOGRAPHY OPTIONS---#
+bibliography: MyLibrary # name of the .bib file used for referencing
+bibliography_spacing: 0.8 # sets the multiplier for line spacing of bibliography spacing (between 0 and 1)
+bibliography_textsize: "small"  # size of the bibliography text size (handy for one too many references!)
+
+#---OTHER---#
+cite_col: "CC0000" #colour of ciation elements
+url_col: "537c8e" #colour of url links
+link_col: "537c8e" #colour of other links within the poster
+footnote_textcol: "ffffff" # Colour of footnote text if used
+output: posterdown::posterdown_latex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  results = 'asis',
+  echo = FALSE,
+  comment = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center'
+)
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+})
+```
+
+# What is `tfprobability?`
+
+- R interface to TensorFlow Probability, the library for probabilistic programming and statistical estimation on top of TensorFlow
+- Provides:
+   - A vast range of __distributions__ for use in upper layers
+   - An equally large range of __bijectors__ (invertible transformations) 
+   - __Distribution layers__: Keras layers that wrap __distributions__, not tensors
+   - Frameworks for fitting multi-level models with __Hamiltonian Monte Carlo__ or __Variational Inference__
+   - Dynamic linear models (Kálmán filter, decomposition)
+   - Extensions to TensorFlow functionality as regards optimizers, linear algebra, and statistics
+- Fully integrated with TensorFlow Core
+
+# `tfprobability` and deep learning with Keras
+
+- Learn _distributions_, not values
+- Using _distribution layers_ directly in Keras networks
+
+## Example: Uncertainty estimates for neural networks
+
+- Have the network learn the actual spread in the data (a.k.a. "aleatoric uncertainty")
+- Model uncertainty in the weights ("epistemic uncertainty"), learning an _approximate posterior_ by minimizing the _evidence lower bound_ (ELBO)
+- See also: blogs.rstudio.com/tensorflow/posts/2019-06-05-uncertainty-estimates-tfprobability/
+
+&nbsp;
+
+```{r, eval=FALSE, echo = TRUE, size="small"}
+library(tensorflow)
+library(tfprobability)
+library(keras)
+
+# just a keras model
+model <- keras_model_sequential() %>%
+  # a dense layer, but with uncertainty in the weights
+  # one unit for the mean and scale each of the normal distribution
+  layer_dense_variational(units = 2, 
+                          make_posterior_fn = posterior_mean_field, 
+                          make_prior_fn = prior_trainable,
+                          kl_weight = 1/n
+                          ) %>%
+  # layer wrapping a normal distribution with learned mean and scale 
+  layer_distribution_lambda(function(x) tfd_normal(
+    loc = x[, 1, drop = FALSE],
+    scale = 1e-3 + tf$math$softplus(0.01 * x[, 2, drop = FALSE])))  
+
+negloglik <- function(y, model) - (model %>% tfd_log_prob(y))
+model %>% compile(optimizer = "adam", loss = negloglik)
+model %>% fit(x, y, epochs = 1000)
+```
+
+&nbsp;
+
+We visualize the posterior predictive as an ensemble of lines, each representing a draw from the weight posterior.
+The learned uncertainty due to the data is indicated by the shades that frame each line.
+
+&nbsp;
+
+```{r, eval=TRUE, echo=FALSE, fig.cap = "Posterior predictive distribution. Each line is produced by sampling from the posterior on the weights, the shading indicating the respective scales (= the learned spread in the data)."}
+knitr::include_graphics("uncertainty2.png", dpi = 55)
+```
+
+&nbsp;
+
+&nbsp;
+
+## Example: Variational autoencoder
+
+- Encoder and decoder both are sequential models, joined via the functional API
+- The last layer of the encoder adds a KL loss so we can simply fit with maximum likelihood
+
+```{r}, eval=FALSE, echo = TRUE, size="small"}
+encoder_model <- keras_model_sequential() %>%
+  [...] %>%
+  layer_multivariate_normal_tri_l(event_size = encoded_size) %>%
+  layer_kl_divergence_add_loss([...])
+
+decoder_model <- keras_model_sequential() %>%
+  [...] %>%
+ layer_independent_bernoulli([...])
+
+vae_model <- keras_model(inputs = encoder_model$inputs,
+                         outputs = decoder_model(encoder_model$outputs[1]))
+vae_loss <- function (x, rv_x) - (rv_x %>% tfd_log_prob(x))
+```
+
+
+# Fitting multi-level models with `tfprobability`
+
+- Varying intercepts example from R. McElreath's "Statistical rethinking" 
+- Define model as a sequence of conditional distributions and fit with Hamiltonian Monte Carlo
+- Employs _partial pooling_ to make use of common features between tanks
+- See also: blogs.rstudio.com/tensorflow/posts/2019-05-06-tadpoles-on-tensorflow
+
+```{r, eval=FALSE, echo=TRUE}
+model <- tfd_joint_distribution_sequential(
+  list(
+    tfd_normal(loc = 0, scale = 1.5),
+    tfd_exponential(rate = 1),
+    function(sigma, a_bar) 
+      tfd_sample_distribution(
+        tfd_normal(loc = a_bar, scale = sigma),
+        sample_shape = list(n_tadpoles)
+      ), 
+    function(l)
+      tfd_independent(
+        tfd_binomial(total_count = n_start, logits = l),
+        reinterpreted_batch_ndims = 1
+      )
+  )
+)
+
+hmc <- mcmc_hamiltonian_monte_carlo([...])
+res <- hmc %>% mcmc_sample_chain([...])
+```
+
+
+After fitting we see the expected shrinkage in the mean survival estimates per tank:
+
+```{r, eval=TRUE, echo=FALSE, fig.cap = "Shrinkage in mean survival estimates due to partial pooling."}
+knitr::include_graphics("shrinkage.png", dpi = 55)
+```
+
+
+# Where to from here?
+
+- Follow the TensorFlow for R blog: blogs.rstudio.com/tensorflow/
+- Documentation: rstudio.github.io/tfprobability/
+- Github: github.com/rstudio/tfprobability
+- The _multiverse team_ on Youtube: www.youtube.com/channel/UCAwJMtPx4HgmMXEDTvZBJ4A
+
+And... stay skeptic!
+
+```{r, eval=TRUE, echo=FALSE, fig.cap="The skeptical hamster, popularized by Richard McElreath in his 2019 Statistical Rethinking lectures.", dpi=400}
+knitr::include_graphics("hamster3.jpg")
+```
+
+"_1 skeptical hamster for sale. He keeps looking at you skeptically like you're doing it all wrong. It's driving me crazy, I can't stand this look of reproach anymore. His name is Olaf._"
+
+<!-- p <- ggplot() -->
+<!-- library(hexSticker) -->
+<!-- sticker( -->
+<!--   p, -->
+<!--   package = "tfprobability", -->
+<!--   s_x = 200, -->
+<!--   s_y = 200, -->
+<!--   s_width = 0, -->
+<!--   s_height = 0, -->
+<!--   p_x = 1,  -->
+<!--   p_y = 1, -->
+<!--   p_size = 12, -->
+<!--   h_fill = "#2ebdbd", -->
+<!--   h_color = "#004C54", -->
+<!--   filename = "poster/tfprobability.png" -->
+<!-- ) -->
