@@ -18,7 +18,7 @@ titlebox_bordercol: "2ebdbd" #Colour of the title Box border.
 titlebox_shape: "all"
 titlebox_borderwidth: "1cm"
 title_textcol: "ffffff" #colour of title text
-author_textcol: "001419" # Colour of author text
+author_textcol: "ffffff" # Colour of author text
 affiliation_textcol: "FFFFFF" # Colour of affiliation text
 title_textsize: "Huge"         # Poster title fontsize
 author_textsize: "Large"       # Author list font size
@@ -30,7 +30,7 @@ logoleft_xshift: '100in'
 logoleft_yshift: '0.2in'
 logoright_name: 'tfprobability.png'
 logoright_width: '3in'
-logoright_xshift: '-0.7in'
+logoright_xshift: '-0.5in'
 logoright_yshift: '0.2in'
 #---POSTER BODY OPTIONS---#
 body_bgcol: "ffffff" #colour of the poster main background
